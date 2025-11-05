@@ -1,0 +1,324 @@
+ <!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Front_End_Scanner</title>
+    <!-- Inclui o arquivo de estilos CSS -->
+    <link rel="stylesheet" href="css/Front_End_Scanner_styles.css">
+    <link rel="stylesheet" href="css/components/forms.css">
+    <link rel="stylesheet" href="css/components/cards.css">
+    <!-- Carrega o Tailwind CSS para as classes utilitárias -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center p-4 min-h-screen">
+
+    <!-- Container Principal do Scanner -->
+    <div class="w-full max-w-2xl p-6 rounded-xl card-container">
+        
+        <header class="text-center mb-6">
+            <h1 class="text-3xl font-extrabold text-mtg-brown">Scanner de Cartas MTG</h1>
+            <p class="text-gray-500 mt-1">Visão Computacional com Scryfall API</p>
+        </header>
+
+        <!-- Formulário de Input -->
+        <form id="scannerForm" class="space-y-4">
+            
+            <!-- Input de Imagem -->
+            <div class="form-group">
+                <label for="img" class="form-label">Selecione a Imagem das Cartas:</label>
+                <input type="file" id="img" name="image" accept="image/*" required 
+                       class="form-input">
+                <div id="fileError" class="error-message hidden"></div>
+            </div>
+            
+            <!-- Pré-visualização da Imagem -->
+            <div id="previewContainer" class="hidden text-center border border-gray-200 p-2 rounded-lg bg-gray-50">
+                <img id="imagePreview" src="" alt="Pré-visualização da Imagem Selecionada" class="max-h-64 mx-auto rounded">
+                <button type="button" id="clearPreview" class="mt-2 text-red-500 hover:text-red-700 text-sm">
+                    Remover imagem
+                </button>
+            </div>
+
+            <!-- Input do Nome de Saída -->
+            <div class="form-group">
+                <label for="NameOutput" class="form-label">Nome do Arquivo de Saída:</label>
+                <input type="text" id="NameOutput" placeholder="Ex: Amulet_Titan.txt" 
+                       class="form-input">
+                <div id="nameError" class="error-message hidden"></div>
+            </div>
+
+            <!-- Opção de Detecção Avançada -->
+            <div class="checkbox-group">
+                <input type="checkbox" id="advancedDetection" name="advanced_detection" class="checkbox-input">
+                <label for="advancedDetection" class="checkbox-label">Usar detecção avançada (para múltiplas cartas)</label>
+            </div>
+
+            <!-- Botão de Ação -->
+            <button type="submit" id="submitButton"
+                    class="w-full btn-primary text-white font-bold py-3 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-mtg-green focus:ring-opacity-50 transition-all duration-200">
+                Listar Cards
+            </button>
+        </form>
+
+        <!-- Área de Status e Resultados -->
+        <div id="statusMessage" class="hidden mt-6 p-3 rounded-lg text-sm status-box"></div>
+
+        <div id="resultsArea" class="hidden mt-6">
+            <h3 class="text-xl font-semibold mb-3 border-b pb-2 text-mtg-brown">Cartas Detectadas:</h3>
+            <div class="text-sm text-gray-600 mb-3">
+                <span id="cardsCount">0</span> cartas encontradas
+            </div>
+            <ul id="cardList" class="space-y-3"></ul>
+            
+            <!-- Botão para baixar decklist -->
+            <div class="mt-4 pt-4 border-t border-gray-200">
+                <button id="downloadDecklist" class="w-full bg-mtg-brown text-white py-2 px-4 rounded-lg hover:bg-mtg-brown/90 transition-colors">
+                    📥 Baixar Decklist Completa
+                </button>
+            </div>
+        </div>
+
+        <!-- Informações do Sistema -->
+        <div class="mt-8 text-center text-xs text-gray-500">
+            <p>Powered by Scryfall API • Tesseract OCR • OpenCV</p>
+            <p id="apiStatus" class="mt-1">🟢 Conectado ao servidor</p>
+        </div>
+
+    </div>
+
+    <!-- Inclui os arquivos de scripts JS como módulos -->
+    <script type="module">
+        // Importa as classes necessárias
+        import { APIClient } from './js/modules/api-client.js';
+        import { UIManager } from './js/modules/ui-manager.js';
+        import { ImagePreview } from './js/modules/image-preview.js';
+        import { Helpers } from './js/utils/helpers.js';
+        import { Validators } from './js/utils/validators.js';
+
+        class MTGScanner {
+            constructor() {
+                this.apiClient = new APIClient();
+                this.uiManager = new UIManager();
+                this.imagePreview = new ImagePreview();
+                this.detectedCards = [];
+                this.initializeEventListeners();
+            }
+
+            initializeEventListeners() {
+                const form = document.getElementById('scannerForm');
+                const imageInput = document.getElementById('img');
+                const nameOutputInput = document.getElementById('NameOutput');
+                const clearPreviewBtn = document.getElementById('clearPreview');
+                const downloadDecklistBtn = document.getElementById('downloadDecklist');
+
+                // Preview de imagem
+                imageInput.addEventListener('change', (e) => {
+                    this.imagePreview.handleImageSelect(e);
+                    this.generateOutputFilename(nameOutputInput);
+                    this.clearErrors();
+                });
+
+                // Limpar preview
+                clearPreviewBtn.addEventListener('click', () => {
+                    this.clearImageInput();
+                });
+
+                // Validação em tempo real do nome do arquivo
+                nameOutputInput.addEventListener('input', () => {
+                    this.validateOutputFilename();
+                });
+
+                // Submissão do formulário
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleFormSubmit();
+                });
+
+                // Download do decklist
+                downloadDecklistBtn.addEventListener('click', () => {
+                    this.downloadDecklist();
+                });
+
+                // Verificação de saúde da API
+                this.checkAPIHealth();
+            }
+
+            clearImageInput() {
+                const imageInput = document.getElementById('img');
+                const nameOutputInput = document.getElementById('NameOutput');
+                
+                imageInput.value = '';
+                nameOutputInput.value = '';
+                this.imagePreview.clearPreview();
+                this.clearErrors();
+            }
+
+            generateOutputFilename(nameOutputInput) {
+                const imageInput = document.getElementById('img');
+                if (imageInput.files.length === 0) return;
+
+                const file = imageInput.files[0];
+                const filename = Helpers.generateFilename(file.name);
+                nameOutputInput.value = filename;
+                
+                // Valida o nome gerado
+                this.validateOutputFilename();
+            }
+
+            validateOutputFilename() {
+                const nameOutputInput = document.getElementById('NameOutput');
+                const nameError = document.getElementById('nameError');
+                
+                const errors = Validators.validateOutputFilename(nameOutputInput.value);
+                
+                if (errors.length > 0) {
+                    nameError.textContent = errors[0];
+                    nameError.classList.remove('hidden');
+                    nameOutputInput.classList.add('form-input-error');
+                    return false;
+                } else {
+                    nameError.classList.add('hidden');
+                    nameOutputInput.classList.remove('form-input-error');
+                    return true;
+                }
+            }
+
+            validateImageFile() {
+                const imageInput = document.getElementById('img');
+                const fileError = document.getElementById('fileError');
+                
+                if (imageInput.files.length === 0) {
+                    fileError.textContent = 'Por favor, selecione uma imagem';
+                    fileError.classList.remove('hidden');
+                    return false;
+                }
+
+                const file = imageInput.files[0];
+                const errors = Validators.validateImageFile(file);
+                
+                if (errors.length > 0) {
+                    fileError.textContent = errors[0];
+                    fileError.classList.remove('hidden');
+                    return false;
+                } else {
+                    fileError.classList.add('hidden');
+                    return true;
+                }
+            }
+
+            clearErrors() {
+                const fileError = document.getElementById('fileError');
+                const nameError = document.getElementById('nameError');
+                
+                fileError.classList.add('hidden');
+                nameError.classList.add('hidden');
+                
+                document.getElementById('img').classList.remove('form-input-error');
+                document.getElementById('NameOutput').classList.remove('form-input-error');
+            }
+
+            async handleFormSubmit() {
+                // Validações
+                if (!this.validateImageFile() || !this.validateOutputFilename()) {
+                    return;
+                }
+
+                const imageInput = document.getElementById('img');
+                const nameOutputInput = document.getElementById('NameOutput');
+                const submitButton = document.getElementById('submitButton');
+                const advancedDetection = document.getElementById('advancedDetection');
+
+                const file = imageInput.files[0];
+                const outputFilename = Validators.sanitizeFilename(nameOutputInput.value);
+
+                try {
+                    this.uiManager.showLoading(submitButton);
+                    this.uiManager.showStatus('⏳ Processando imagem e identificando cartas...', 'loading');
+
+                    const options = {
+                        advancedDetection: advancedDetection?.checked || false
+                    };
+
+                    // Primeiro faz o scan para mostrar os resultados
+                    const scanResult = await this.apiClient.scanImage(file, options);
+                    
+                    if (scanResult.success && scanResult.cards_detected > 0) {
+                        this.detectedCards = scanResult.cards;
+                        this.uiManager.showResults(scanResult.cards);
+                        this.uiManager.showStatus(`✅ ${scanResult.cards_detected} cartas identificadas com sucesso!`, 'success');
+                        
+                        // Atualiza contador
+                        document.getElementById('cardsCount').textContent = scanResult.cards_detected;
+                        
+                        // Mostra área de resultados
+                        document.getElementById('resultsArea').classList.remove('hidden');
+                    } else {
+                        this.uiManager.showStatus('❌ Nenhuma carta foi identificada na imagem.', 'error');
+                    }
+
+                } catch (error) {
+                    console.error('Erro:', error);
+                    this.uiManager.showStatus(`❌ ${error.message}`, 'error');
+                } finally {
+                    this.uiManager.hideLoading(submitButton);
+                }
+            }
+
+            async downloadDecklist() {
+                if (this.detectedCards.length === 0) {
+                    this.uiManager.showStatus('❌ Nenhuma carta para gerar decklist.', 'error');
+                    return;
+                }
+
+                const nameOutputInput = document.getElementById('NameOutput');
+                const outputFilename = nameOutputInput.value || 'decklist.txt';
+                const advancedDetection = document.getElementById('advancedDetection');
+
+                try {
+                    const imageInput = document.getElementById('img');
+                    const file = imageInput.files[0];
+
+                    const options = {
+                        advancedDetection: advancedDetection?.checked || false
+                    };
+
+                    this.uiManager.showStatus('⏳ Gerando arquivo de decklist...', 'loading');
+
+                    const blob = await this.apiClient.generateDecklist(file, outputFilename, options);
+                    this.uiManager.triggerDownload(blob, outputFilename);
+                    
+                    this.uiManager.showStatus('✅ Decklist baixado com sucesso!', 'success');
+
+                } catch (error) {
+                    console.error('Erro no download:', error);
+                    this.uiManager.showStatus(`❌ Erro ao baixar decklist: ${error.message}`, 'error');
+                }
+            }
+
+            async checkAPIHealth() {
+                const apiStatusElement = document.getElementById('apiStatus');
+                
+                try {
+                    const isHealthy = await this.apiClient.healthCheck();
+                    if (isHealthy) {
+                        apiStatusElement.textContent = '🟢 Conectado ao servidor';
+                        apiStatusElement.className = 'mt-1 text-green-600';
+                    } else {
+                        apiStatusElement.textContent = '🔴 Servidor não disponível';
+                        apiStatusElement.className = 'mt-1 text-red-600';
+                    }
+                } catch {
+                    apiStatusElement.textContent = '🔴 Erro de conexão';
+                    apiStatusElement.className = 'mt-1 text-red-600';
+                }
+            }
+        }
+
+        // Inicializa a aplicação quando o DOM estiver carregado
+        document.addEventListener('DOMContentLoaded', () => {
+            new MTGScanner();
+        });
+    </script>
+</body>
+</html>

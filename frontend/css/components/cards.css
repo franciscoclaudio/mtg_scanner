@@ -1,0 +1,46 @@
+/* Estilos específicos para a exibição de cartas */
+.card-item {
+    transition: all 0.2s ease-in-out;
+    border-left: 4px solid transparent;
+}
+
+.card-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-left-color: var(--color-mtg-green);
+}
+
+.card-name {
+    font-weight: 600;
+    color: var(--color-mtg-brown);
+}
+
+.card-type {
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+.card-mana-cost {
+    font-size: 0.75rem;
+    color: #9ca3af;
+}
+
+.rarity-common {
+    background-color: #f3f4f6;
+    color: #374151;
+}
+
+.rarity-uncommon {
+    background-color: #e5e7eb;
+    color: #1f2937;
+}
+
+.rarity-rare {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.rarity-mythic {
+    background-color: #fbcfe8;
+    color: #9d174d;
+}
